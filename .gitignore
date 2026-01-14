@@ -1,12 +1,26 @@
-# Python
+# ไฟล์ Python ที่ถูก compile (ไม่ต้องเอาขึ้น)
 __pycache__/
-*.py[cod]
+*.pyc
 
-# Binaries
-*.exe
-
-# Project Specific (ไฟล์ที่เกิดขึ้นจากการรันโปรแกรม)
+# โฟลเดอร์เก็บไฟล์ชั่วคราว (ห้ามเอาขึ้นเด็ดขาด เพื่อความปลอดภัยข้อมูล)
 uploads/
-results/
 outputs/
-*.pdf
+
+# Environment (ถ้ามี)
+venv/
+env/
+.env
+
+# ไฟล์ฐานข้อมูล (ถ้ามีในอนาคต)
+*.sqlite3
+*.db
+
+# ไฟล์ System ของ Mac/Windows
+.DS_Store
+Thumbs.db
+
+# Ignore FFmpeg executables
+ffmpeg.exe
+ffplay.exe
+ffprobe.exe
+*.exe

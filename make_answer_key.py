@@ -11,21 +11,14 @@ def create_master_answer_key():
         print(f"Error: {e}")
         return
 
-    print("กำลังสร้างไฟล์เฉลย V13 (จูนพิกัดใหม่ให้ตรงเป๊ะ)...")
+    print("กำลังสร้างไฟล์เฉลย V13 (เพิ่มการวงกลมส่วนจำนวน Mass)...")
 
     # =======================================================
-    # 1. CONFIG: พิกัดบังคับ (จูนใหม่ตรงนี้!)
+    # 1. CONFIG: พิกัดบังคับ
     # =======================================================
     FORCE_MAPPING = {
-        # [ระยะตัวที่1, ระยะตัวที่2, ระยะตัวที่3] (นับจากขอบขวาของคำค้นหา)
-        
-        # Measuring: ขยับเข้ามาชิดหน่อย เพื่อหลบ x ตัวหลัง
         "Measuring": [20, 65, 115],
-        
-        # Skin: ขยับตัวหลังออกไปหน่อย
         "The skin ellipse": [15, 90],
-        
-        # Mass: เปลี่ยนคำค้นหาให้ยาวขึ้น เพื่อไม่ให้เขียนทับตัวหนังสือ
         "infiltrative firm yellow white mass": [10, 60, 110],
         "well-defined firm white mass": [10, 60, 110]
     }
@@ -37,18 +30,11 @@ def create_master_answer_key():
     def fill_force(anchor_text, values, offsets):
         hits = page.search_for(anchor_text)
         if not hits: 
-            # กรณีหาประโยคยาวไม่เจอ (บางที PDF ตัดคำ) ให้ลองหาคำสั้นลง
-            if "infiltrative" in anchor_text:
-                hits = page.search_for("infiltrative firm")
-            elif "well-defined" in anchor_text:
-                hits = page.search_for("well-defined firm")
-            
-            if not hits:
-                print(f"⚠️ หาไม่เจอ: {anchor_text}")
-                return
+            if "infiltrative" in anchor_text: hits = page.search_for("infiltrative firm")
+            elif "well-defined" in anchor_text: hits = page.search_for("well-defined firm")
+            if not hits: return
         
         target_rect = hits[0]
-        # เลือก Anchor ที่มี Checkbox ข้างหน้า (สำหรับ Mass)
         if "infiltrative" in anchor_text or "well-defined" in anchor_text:
              for h in hits:
                  if page.search_for("☐", clip=fitz.Rect(0, h.y0, h.x0, h.y1)):
@@ -56,63 +42,41 @@ def create_master_answer_key():
 
         base_x = target_rect.x1
         base_y = target_rect.y1
-        
-        # ถ้าใช้คำค้นหาสั้น (infiltrative firm) ต้องบวกระยะเพิ่มไปอีก เพื่อข้ามคำว่า yellow white mass
-        # ความกว้างโดยประมาณของ " yellow white mass" คือ 100 หน่วย
-        extra_offset = 0
-        if anchor_text == "infiltrative firm yellow white mass" and hits[0].x1 < 200: 
-             # ถ้า x1 น้อยแสดงว่าเจอแค่คำสั้น ต้องบวกระยะเพิ่มเอง
-             extra_offset = 90
+        extra_offset = 90 if anchor_text == "infiltrative firm yellow white mass" and hits[0].x1 < 200 else 0
         
         for i, val in enumerate(values):
             if i < len(offsets):
                 x_pos = base_x + offsets[i] + extra_offset
-                
-                # ใช้ insert_text (เขียนสด)
-                point = fitz.Point(x_pos, base_y - 2) 
-                page.insert_text(point, str(val), fontsize=10, color=(0, 0, 0))
+                page.insert_text(fitz.Point(x_pos, base_y - 2), str(val), fontsize=10, color=(0, 0, 0))
 
     def fill_auto(anchor_text, values, placement='after'):
         hits = page.search_for(anchor_text)
         if not hits: return
         anchor_rect = hits[0]
         ref_y = (anchor_rect.y0 + anchor_rect.y1) / 2
-        
         raw_dots = page.search_for(".")
-        valid_dots = []
-        for d in raw_dots:
-            if abs((d.y0+d.y1)/2 - ref_y) < 5:
-                if placement == 'after' and d.x0 > anchor_rect.x0: valid_dots.append(d)
-                elif placement == 'before' and d.x1 < anchor_rect.x1: valid_dots.append(d)
-
+        valid_dots = [d for d in raw_dots if abs((d.y0+d.y1)/2 - ref_y) < 5]
+        valid_dots = [d for d in valid_dots if (placement == 'after' and d.x0 > anchor_rect.x0) or (placement == 'before' and d.x1 < anchor_rect.x1)]
         valid_dots.sort(key=lambda r: r.x0)
+        
         slots = []
         if valid_dots:
             curr = valid_dots[0]
             for next_d in valid_dots[1:]:
                 if next_d.x0 < curr.x1 + 15:
                     curr = fitz.Rect(curr.x0, min(curr.y0, next_d.y0), max(next_d.x1, curr.x1), max(next_d.y1, curr.y1))
-                else:
-                    slots.append(curr); curr = next_d
+                else: slots.append(curr); curr = next_d
             slots.append(curr)
-
-        slots.sort(key=lambda r: r.x0)
         if placement == 'before': slots.reverse()
 
         for i, val in enumerate(values):
             if i < len(slots):
-                t = slots[i]
-                center_x = t.x0 + 5 
-                point = fitz.Point(center_x, t.y1 - 2)
-                page.insert_text(point, str(val), fontsize=10, color=(0, 0, 0))
+                page.insert_text(fitz.Point(slots[i].x0 + 5, slots[i].y1 - 2), str(val), fontsize=10, color=(0, 0, 0))
 
     def tick_box_smart(anchor, y_limit=None):
         hits = page.search_for(anchor)
         if not hits: return
-        target_rect = None
-        for h in hits:
-            if y_limit and h.y0 > y_limit: continue
-            target_rect = h; break
+        target_rect = next((h for h in hits if not y_limit or h.y0 < y_limit), None)
         if not target_rect: return
         box_hits = page.search_for("☐")
         closest = None; min_dist = 999
@@ -121,8 +85,7 @@ def create_master_answer_key():
             dist = target_rect.x0 - box.x1 
             if 0 < dist < 150 and dist < min_dist: min_dist = dist; closest = box
         if closest:
-            cx = closest.x0 + (closest.width/2) - 3; cy = closest.y1 - 1
-            page.insert_text(fitz.Point(cx, cy), "/", fontsize=12, color=(0, 0, 1))
+            page.insert_text(fitz.Point(closest.x0 + (closest.width/2) - 3, closest.y1 - 1), "/", fontsize=12, color=(0, 0, 1))
 
     # =======================================================
     # 3. DATA & EXECUTION
@@ -132,26 +95,15 @@ def create_master_answer_key():
         "skin": ["15", "7"],
         "mass_infiltrative": ["3.6", "3", "2.8"],
         "mass_welldefined": None,
-        "margins": {
-            "deep": "0.7", "superior": "3.5", "inferior": "1",
-            "medial": "8", "lateral": "5", "skin": "0.4"
-        },
-        "checks": [
-            "modified radical mastectomy", "appears normal", "is everted",
-            "infiltrative firm", "is unremarkable", "in ( upper / lower"
-        ],
-        "circles": ["right", "lower", "outer"],
-        "sections": {
-            "nipple": "A1-1", "mass": "A2-1 to A4-1",
-            "deep": "A5-1", "nearest": "A6-1 (Inferior)"
-        }
+        "margins": {"deep": "0.7", "superior": "3.5", "inferior": "1", "medial": "8", "lateral": "5", "skin": "0.4"},
+        "checks": ["modified radical mastectomy", "appears normal", "is everted", "infiltrative firm", "is unremarkable", "in ( upper / lower"],
+        "circles": ["right", "is a", "lower", "outer"], # เพิ่ม "is a" ตรงนี้
+        "sections": {"nipple": "A1-1", "mass": "A2-1 to A4-1", "deep": "A5-1", "nearest": "A6-1 (Inferior)"}
     }
 
     mapping_config = {
         "specimen": ("Measuring", "after"),
         "skin": ("The skin ellipse", "after"),
-        
-        # ใช้ Key ใหม่ที่ยาวขึ้น
         "mass_infiltrative": ("infiltrative firm yellow white mass", "after"),
         "mass_welldefined": ("well-defined firm white mass", "after")
     }
@@ -163,8 +115,7 @@ def create_master_answer_key():
                 if force_key in pdf_keyword:
                     fill_force(pdf_keyword, answer_data[data_key], offsets)
                     is_forced = True; break
-            if not is_forced:
-                fill_auto(pdf_keyword, answer_data[data_key], placement)
+            if not is_forced: fill_auto(pdf_keyword, answer_data[data_key], placement)
 
     for k, v in answer_data["margins"].items():
         label = k if "margin" in k or k == "skin" else f"{k} margin"
@@ -174,12 +125,24 @@ def create_master_answer_key():
         if "upper / lower" in check: tick_box_smart(check, y_limit=650)
         else: tick_box_smart(check)
 
+    # --- ส่วนที่แก้ไข: การวงกลมตัวเลือก ---
     for circle in answer_data["circles"]:
         if circle in ["right", "left"]:
             hits = page.search_for("( right / left )")
             if hits:
                 r = hits[0]
                 page.draw_oval(fitz.Rect(r.x0+5, r.y0, r.x0+35, r.y1), color=(1,0,0), width=1.5)
+        
+        # เพิ่มเงื่อนไขวงกลม "is a / are / two / are multiple"
+        elif circle in ["is a", "are", "two", "are multiple"]:
+            qty_hits = page.search_for("There (is a / are / two / are multiple)")
+            if not qty_hits: qty_hits = page.search_for("There ( is a / are / two / are multiple )")
+            if qty_hits:
+                r = qty_hits[0]
+                # ค้นหาคำที่ต้องการวงกลมภายในขอบเขตของบรรทัดนั้น
+                wh = page.search_for(circle, clip=fitz.Rect(r.x0, r.y0-5, r.x1, r.y1+5))
+                if wh: page.draw_oval(wh[0], color=(1,0,0), width=1.5)
+
         elif circle in ["lower", "outer"]:
             loc_hits = page.search_for("in ( upper / lower")
             if loc_hits:
@@ -189,9 +152,7 @@ def create_master_answer_key():
 
     def write_manual(anchor, text, dx=-80):
         hits = page.search_for(anchor)
-        if hits:
-            r = hits[0]
-            page.insert_text(fitz.Point(r.x0 + dx, r.y1 - 2), text, fontsize=10, color=(0,0,0))
+        if hits: page.insert_text(fitz.Point(hits[0].x0 + dx, hits[0].y1 - 2), text, fontsize=10, color=(0,0,0))
 
     for k, v in answer_data["sections"].items():
         if k == "nipple": write_manual("= nipple", v)
@@ -200,7 +161,7 @@ def create_master_answer_key():
         if k == "nearest": write_manual("= nearest resected margin", v)
 
     doc.save(output_path)
-    print(f"✅ ไฟล์เฉลย V13 (จูนพิกัดแล้ว) สร้างเสร็จแล้ว: {output_path}")
+    print(f"✅ ไฟล์เฉลย V13 สร้างเสร็จแล้ว: {output_path}")
 
 if __name__ == "__main__":
     create_master_answer_key()
