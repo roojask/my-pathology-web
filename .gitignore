@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Binaries
+*.exe
+
+# Project Specific (ไฟล์ที่เกิดขึ้นจากการรันโปรแกรม)
+uploads/
+results/
+outputs/
+*.pdf
